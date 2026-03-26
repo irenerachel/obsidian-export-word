@@ -1,10 +1,10 @@
 {
   "id": "export-word",
   "name": "Export to Word",
-  "version": "1.0.1",
+  "version": "2.0.0",
   "minAppVersion": "1.5.0",
   "description": "Export the current note to a Word (.docx) document with embedded images. No external tools required.",
   "author": "阿真Irene",
   "authorUrl": "https://github.com/irenerachel",
-  "isDesktopOnly": true
+  "isDesktopOnly": false
 }

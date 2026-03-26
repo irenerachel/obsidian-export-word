@@ -1,9 +1,7 @@
 "use strict";
-var __create = Object.create;
 var __defProp = Object.defineProperty;
 var __getOwnPropDesc = Object.getOwnPropertyDescriptor;
 var __getOwnPropNames = Object.getOwnPropertyNames;
-var __getProtoOf = Object.getPrototypeOf;
 var __hasOwnProp = Object.prototype.hasOwnProperty;
 var __export = (target, all) => {
   for (var name in all)
@@ -17,14 +15,6 @@ var __copyProps = (to, from, except, desc) => {
   }
   return to;
 };
-var __toESM = (mod, isNodeMode, target) => (target = mod != null ? __create(__getProtoOf(mod)) : {}, __copyProps(
-  // If the importer is in node compatibility mode or this is not an ESM
-  // file that has been converted to a CommonJS file using a Babel-
-  // compatible transform (i.e. "__esModule" has not been set), then set
-  // "default" to the CommonJS "module.exports" for node compatibility.
-  isNodeMode || !mod || !mod.__esModule ? __defProp(target, "default", { value: mod, enumerable: true }) : target,
-  mod
-));
 var __toCommonJS = (mod) => __copyProps(__defProp({}, "__esModule", { value: true }), mod);
 
 // src/main.ts
@@ -34,9 +24,6 @@ __export(main_exports, {
 });
 module.exports = __toCommonJS(main_exports);
 var import_obsidian3 = require("obsidian");
-var path = __toESM(require("path"));
-var os = __toESM(require("os"));
-var fs = __toESM(require("fs"));
 
 // src/converter.ts
 var import_obsidian = require("obsidian");
@@ -5444,6 +5431,265 @@ MarkdownIt.prototype.renderInline = function(src, env) {
 };
 var lib_default = MarkdownIt;
 
+// node_modules/markdown-it-footnote/index.mjs
+function render_footnote_anchor_name(tokens, idx, options, env) {
+  const n = Number(tokens[idx].meta.id + 1).toString();
+  let prefix = "";
+  if (typeof env.docId === "string") prefix = `-${env.docId}-`;
+  return prefix + n;
+}
+function render_footnote_caption(tokens, idx) {
+  let n = Number(tokens[idx].meta.id + 1).toString();
+  if (tokens[idx].meta.subId > 0) n += `:${tokens[idx].meta.subId}`;
+  return `[${n}]`;
+}
+function render_footnote_ref(tokens, idx, options, env, slf) {
+  const id = slf.rules.footnote_anchor_name(tokens, idx, options, env, slf);
+  const caption = slf.rules.footnote_caption(tokens, idx, options, env, slf);
+  let refid = id;
+  if (tokens[idx].meta.subId > 0) refid += `:${tokens[idx].meta.subId}`;
+  return `<sup class="footnote-ref"><a href="#fn${id}" id="fnref${refid}">${caption}</a></sup>`;
+}
+function render_footnote_block_open(tokens, idx, options) {
+  return (options.xhtmlOut ? '<hr class="footnotes-sep" />\n' : '<hr class="footnotes-sep">\n') + '<section class="footnotes">\n<ol class="footnotes-list">\n';
+}
+function render_footnote_block_close() {
+  return "</ol>\n</section>\n";
+}
+function render_footnote_open(tokens, idx, options, env, slf) {
+  let id = slf.rules.footnote_anchor_name(tokens, idx, options, env, slf);
+  if (tokens[idx].meta.subId > 0) id += `:${tokens[idx].meta.subId}`;
+  return `<li id="fn${id}" class="footnote-item">`;
+}
+function render_footnote_close() {
+  return "</li>\n";
+}
+function render_footnote_anchor(tokens, idx, options, env, slf) {
+  let id = slf.rules.footnote_anchor_name(tokens, idx, options, env, slf);
+  if (tokens[idx].meta.subId > 0) id += `:${tokens[idx].meta.subId}`;
+  return ` <a href="#fnref${id}" class="footnote-backref">\u21A9\uFE0E</a>`;
+}
+function footnote_plugin(md) {
+  const parseLinkLabel2 = md.helpers.parseLinkLabel;
+  const isSpace2 = md.utils.isSpace;
+  md.renderer.rules.footnote_ref = render_footnote_ref;
+  md.renderer.rules.footnote_block_open = render_footnote_block_open;
+  md.renderer.rules.footnote_block_close = render_footnote_block_close;
+  md.renderer.rules.footnote_open = render_footnote_open;
+  md.renderer.rules.footnote_close = render_footnote_close;
+  md.renderer.rules.footnote_anchor = render_footnote_anchor;
+  md.renderer.rules.footnote_caption = render_footnote_caption;
+  md.renderer.rules.footnote_anchor_name = render_footnote_anchor_name;
+  function footnote_def(state2, startLine, endLine, silent) {
+    const start = state2.bMarks[startLine] + state2.tShift[startLine];
+    const max2 = state2.eMarks[startLine];
+    if (start + 4 > max2) return false;
+    if (state2.src.charCodeAt(start) !== 91) return false;
+    if (state2.src.charCodeAt(start + 1) !== 94) return false;
+    let pos;
+    for (pos = start + 2; pos < max2; pos++) {
+      if (state2.src.charCodeAt(pos) === 32) return false;
+      if (state2.src.charCodeAt(pos) === 93) {
+        break;
+      }
+    }
+    if (pos === start + 2) return false;
+    if (pos + 1 >= max2 || state2.src.charCodeAt(++pos) !== 58) return false;
+    if (silent) return true;
+    pos++;
+    if (!state2.env.footnotes) state2.env.footnotes = {};
+    if (!state2.env.footnotes.refs) state2.env.footnotes.refs = {};
+    const label = state2.src.slice(start + 2, pos - 2);
+    state2.env.footnotes.refs[`:${label}`] = -1;
+    const token_fref_o = new state2.Token("footnote_reference_open", "", 1);
+    token_fref_o.meta = { label };
+    token_fref_o.level = state2.level++;
+    state2.tokens.push(token_fref_o);
+    const oldBMark = state2.bMarks[startLine];
+    const oldTShift = state2.tShift[startLine];
+    const oldSCount = state2.sCount[startLine];
+    const oldParentType = state2.parentType;
+    const posAfterColon = pos;
+    const initial = state2.sCount[startLine] + pos - (state2.bMarks[startLine] + state2.tShift[startLine]);
+    let offset = initial;
+    while (pos < max2) {
+      const ch = state2.src.charCodeAt(pos);
+      if (isSpace2(ch)) {
+        if (ch === 9) {
+          offset += 4 - offset % 4;
+        } else {
+          offset++;
+        }
+      } else {
+        break;
+      }
+      pos++;
+    }
+    state2.tShift[startLine] = pos - posAfterColon;
+    state2.sCount[startLine] = offset - initial;
+    state2.bMarks[startLine] = posAfterColon;
+    state2.blkIndent += 4;
+    state2.parentType = "footnote";
+    if (state2.sCount[startLine] < state2.blkIndent) {
+      state2.sCount[startLine] += state2.blkIndent;
+    }
+    state2.md.block.tokenize(state2, startLine, endLine, true);
+    state2.parentType = oldParentType;
+    state2.blkIndent -= 4;
+    state2.tShift[startLine] = oldTShift;
+    state2.sCount[startLine] = oldSCount;
+    state2.bMarks[startLine] = oldBMark;
+    const token_fref_c = new state2.Token("footnote_reference_close", "", -1);
+    token_fref_c.level = --state2.level;
+    state2.tokens.push(token_fref_c);
+    return true;
+  }
+  function footnote_inline(state2, silent) {
+    const max2 = state2.posMax;
+    const start = state2.pos;
+    if (start + 2 >= max2) return false;
+    if (state2.src.charCodeAt(start) !== 94) return false;
+    if (state2.src.charCodeAt(start + 1) !== 91) return false;
+    const labelStart = start + 2;
+    const labelEnd = parseLinkLabel2(state2, start + 1);
+    if (labelEnd < 0) return false;
+    if (!silent) {
+      if (!state2.env.footnotes) state2.env.footnotes = {};
+      if (!state2.env.footnotes.list) state2.env.footnotes.list = [];
+      const footnoteId = state2.env.footnotes.list.length;
+      const tokens = [];
+      state2.md.inline.parse(
+        state2.src.slice(labelStart, labelEnd),
+        state2.md,
+        state2.env,
+        tokens
+      );
+      const token = state2.push("footnote_ref", "", 0);
+      token.meta = { id: footnoteId };
+      state2.env.footnotes.list[footnoteId] = {
+        content: state2.src.slice(labelStart, labelEnd),
+        tokens
+      };
+    }
+    state2.pos = labelEnd + 1;
+    state2.posMax = max2;
+    return true;
+  }
+  function footnote_ref(state2, silent) {
+    const max2 = state2.posMax;
+    const start = state2.pos;
+    if (start + 3 > max2) return false;
+    if (!state2.env.footnotes || !state2.env.footnotes.refs) return false;
+    if (state2.src.charCodeAt(start) !== 91) return false;
+    if (state2.src.charCodeAt(start + 1) !== 94) return false;
+    let pos;
+    for (pos = start + 2; pos < max2; pos++) {
+      if (state2.src.charCodeAt(pos) === 32) return false;
+      if (state2.src.charCodeAt(pos) === 10) return false;
+      if (state2.src.charCodeAt(pos) === 93) {
+        break;
+      }
+    }
+    if (pos === start + 2) return false;
+    if (pos >= max2) return false;
+    pos++;
+    const label = state2.src.slice(start + 2, pos - 1);
+    if (typeof state2.env.footnotes.refs[`:${label}`] === "undefined") return false;
+    if (!silent) {
+      if (!state2.env.footnotes.list) state2.env.footnotes.list = [];
+      let footnoteId;
+      if (state2.env.footnotes.refs[`:${label}`] < 0) {
+        footnoteId = state2.env.footnotes.list.length;
+        state2.env.footnotes.list[footnoteId] = { label, count: 0 };
+        state2.env.footnotes.refs[`:${label}`] = footnoteId;
+      } else {
+        footnoteId = state2.env.footnotes.refs[`:${label}`];
+      }
+      const footnoteSubId = state2.env.footnotes.list[footnoteId].count;
+      state2.env.footnotes.list[footnoteId].count++;
+      const token = state2.push("footnote_ref", "", 0);
+      token.meta = { id: footnoteId, subId: footnoteSubId, label };
+    }
+    state2.pos = pos;
+    state2.posMax = max2;
+    return true;
+  }
+  function footnote_tail(state2) {
+    let tokens;
+    let current;
+    let currentLabel;
+    let insideRef = false;
+    const refTokens = {};
+    if (!state2.env.footnotes) {
+      return;
+    }
+    state2.tokens = state2.tokens.filter(function(tok) {
+      if (tok.type === "footnote_reference_open") {
+        insideRef = true;
+        current = [];
+        currentLabel = tok.meta.label;
+        return false;
+      }
+      if (tok.type === "footnote_reference_close") {
+        insideRef = false;
+        refTokens[":" + currentLabel] = current;
+        return false;
+      }
+      if (insideRef) {
+        current.push(tok);
+      }
+      return !insideRef;
+    });
+    if (!state2.env.footnotes.list) {
+      return;
+    }
+    const list2 = state2.env.footnotes.list;
+    state2.tokens.push(new state2.Token("footnote_block_open", "", 1));
+    for (let i = 0, l = list2.length; i < l; i++) {
+      const token_fo = new state2.Token("footnote_open", "", 1);
+      token_fo.meta = { id: i, label: list2[i].label };
+      state2.tokens.push(token_fo);
+      if (list2[i].tokens) {
+        tokens = [];
+        const token_po = new state2.Token("paragraph_open", "p", 1);
+        token_po.block = true;
+        tokens.push(token_po);
+        const token_i = new state2.Token("inline", "", 0);
+        token_i.children = list2[i].tokens;
+        token_i.content = list2[i].content;
+        tokens.push(token_i);
+        const token_pc = new state2.Token("paragraph_close", "p", -1);
+        token_pc.block = true;
+        tokens.push(token_pc);
+      } else if (list2[i].label) {
+        tokens = refTokens[`:${list2[i].label}`];
+      }
+      if (tokens) state2.tokens = state2.tokens.concat(tokens);
+      let lastParagraph;
+      if (state2.tokens[state2.tokens.length - 1].type === "paragraph_close") {
+        lastParagraph = state2.tokens.pop();
+      } else {
+        lastParagraph = null;
+      }
+      const t = list2[i].count > 0 ? list2[i].count : 1;
+      for (let j = 0; j < t; j++) {
+        const token_a = new state2.Token("footnote_anchor", "", 0);
+        token_a.meta = { id: i, subId: j, label: list2[i].label };
+        state2.tokens.push(token_a);
+      }
+      if (lastParagraph) {
+        state2.tokens.push(lastParagraph);
+      }
+      state2.tokens.push(new state2.Token("footnote_close", "", -1));
+    }
+    state2.tokens.push(new state2.Token("footnote_block_close", "", -1));
+  }
+  md.block.ruler.before("reference", "footnote_def", footnote_def, { alt: ["paragraph", "reference"] });
+  md.inline.ruler.after("image", "footnote_inline", footnote_inline);
+  md.inline.ruler.after("footnote_inline", "footnote_ref", footnote_ref);
+  md.core.ruler.after("inline", "footnote_tail", footnote_tail);
+}
+
 // node_modules/docx/dist/index.mjs
 var __defProp2 = Object.defineProperty;
 var __defProps = Object.defineProperties;
@@ -5464,6 +5710,18 @@ var __spreadValues = (a, b) => {
   return a;
 };
 var __spreadProps = (a, b) => __defProps(a, __getOwnPropDescs(b));
+var __objRest = (source, exclude) => {
+  var target = {};
+  for (var prop in source)
+    if (__hasOwnProp2.call(source, prop) && exclude.indexOf(prop) < 0)
+      target[prop] = source[prop];
+  if (source != null && __getOwnPropSymbols)
+    for (var prop of __getOwnPropSymbols(source)) {
+      if (exclude.indexOf(prop) < 0 && __propIsEnum.call(source, prop))
+        target[prop] = source[prop];
+    }
+  return target;
+};
 var __publicField = (obj, key, value) => __defNormalProp(obj, typeof key !== "symbol" ? key + "" : key, value);
 var __async = (__this, __arguments, generator) => {
   return new Promise((resolve, reject) => {
@@ -10121,7 +10379,7 @@ function requireBuffer_list() {
       }
     }, {
       key: "join",
-      value: function join2(s) {
+      value: function join(s) {
         if (this.length === 0) return "";
         var p = this.head;
         var ret = "" + p.data;
@@ -18547,6 +18805,11 @@ var EndnoteReference = class extends EmptyElement {
     super("w:endnoteRef");
   }
 };
+var Tab = class extends EmptyElement {
+  constructor() {
+    super("w:tab");
+  }
+};
 var PageBreakBefore = class extends XmlComponent {
   constructor() {
     super("w:pageBreakBefore");
@@ -18690,6 +18953,11 @@ var ConcreteHyperlink = class extends XmlComponent {
     children.forEach((child) => {
       this.root.push(child);
     });
+  }
+};
+var InternalHyperlink = class extends ConcreteHyperlink {
+  constructor(options) {
+    super(options.children, uniqueId(), options.anchor);
   }
 };
 var ExternalHyperlink = class extends XmlComponent {
@@ -22617,9 +22885,196 @@ var File = class {
     return this.fontWrapper;
   }
 };
+var FieldInstruction = class extends XmlComponent {
+  constructor(properties = {}) {
+    super("w:instrText");
+    __publicField(this, "properties");
+    this.properties = properties;
+    this.root.push(new TextAttributes({ space: SpaceType.PRESERVE }));
+    let instruction = "TOC";
+    if (this.properties.captionLabel) {
+      instruction = `${instruction} \\a "${this.properties.captionLabel}"`;
+    }
+    if (this.properties.entriesFromBookmark) {
+      instruction = `${instruction} \\b "${this.properties.entriesFromBookmark}"`;
+    }
+    if (this.properties.captionLabelIncludingNumbers) {
+      instruction = `${instruction} \\c "${this.properties.captionLabelIncludingNumbers}"`;
+    }
+    if (this.properties.sequenceAndPageNumbersSeparator) {
+      instruction = `${instruction} \\d "${this.properties.sequenceAndPageNumbersSeparator}"`;
+    }
+    if (this.properties.tcFieldIdentifier) {
+      instruction = `${instruction} \\f "${this.properties.tcFieldIdentifier}"`;
+    }
+    if (this.properties.hyperlink) {
+      instruction = `${instruction} \\h`;
+    }
+    if (this.properties.tcFieldLevelRange) {
+      instruction = `${instruction} \\l "${this.properties.tcFieldLevelRange}"`;
+    }
+    if (this.properties.pageNumbersEntryLevelsRange) {
+      instruction = `${instruction} \\n "${this.properties.pageNumbersEntryLevelsRange}"`;
+    }
+    if (this.properties.headingStyleRange) {
+      instruction = `${instruction} \\o "${this.properties.headingStyleRange}"`;
+    }
+    if (this.properties.entryAndPageNumberSeparator) {
+      instruction = `${instruction} \\p "${this.properties.entryAndPageNumberSeparator}"`;
+    }
+    if (this.properties.seqFieldIdentifierForPrefix) {
+      instruction = `${instruction} \\s "${this.properties.seqFieldIdentifierForPrefix}"`;
+    }
+    if (this.properties.stylesWithLevels && this.properties.stylesWithLevels.length) {
+      const styles = this.properties.stylesWithLevels.map((sl) => `${sl.styleName},${sl.level}`).join(",");
+      instruction = `${instruction} \\t "${styles}"`;
+    }
+    if (this.properties.useAppliedParagraphOutlineLevel) {
+      instruction = `${instruction} \\u`;
+    }
+    if (this.properties.preserveTabInEntries) {
+      instruction = `${instruction} \\w`;
+    }
+    if (this.properties.preserveNewLineInEntries) {
+      instruction = `${instruction} \\x`;
+    }
+    if (this.properties.hideTabAndPageNumbersInWebView) {
+      instruction = `${instruction} \\z`;
+    }
+    this.root.push(instruction);
+  }
+};
+var StructuredDocumentTagContent = class extends XmlComponent {
+  constructor() {
+    super("w:sdtContent");
+  }
+};
+var StructuredDocumentTagProperties = class extends XmlComponent {
+  constructor(alias) {
+    super("w:sdtPr");
+    if (alias) {
+      this.root.push(new StringValueElement("w:alias", alias));
+    }
+  }
+};
+var TableOfContents = class extends FileChild {
+  constructor(alias = "Table of Contents", _a2 = {}) {
+    var _b = _a2, {
+      contentChildren = [],
+      cachedEntries = [],
+      beginDirty = true
+    } = _b, properties = __objRest(_b, [
+      "contentChildren",
+      "cachedEntries",
+      "beginDirty"
+    ]);
+    super("w:sdt");
+    this.root.push(new StructuredDocumentTagProperties(alias));
+    const content = new StructuredDocumentTagContent();
+    const beginParagraphMandatoryChildren = [
+      new Run({
+        children: [createBegin(beginDirty), new FieldInstruction(properties), createSeparate()]
+      })
+    ];
+    const endParagraphMandatoryChildren = [
+      new Run({
+        children: [createEnd()]
+      })
+    ];
+    const hasCachedContent = cachedEntries !== void 0 && cachedEntries.length > 0;
+    if (hasCachedContent) {
+      const { stylesWithLevels } = properties;
+      const cachedParagraphs = cachedEntries.map((entry, i) => {
+        var _a22, _b2;
+        const contentChild = this.buildCachedContentParagraphChild(entry, properties);
+        const style = (_b2 = (_a22 = stylesWithLevels == null ? void 0 : stylesWithLevels.find((s) => s.level === entry.level)) == null ? void 0 : _a22.styleName) != null ? _b2 : `TOC${entry.level}`;
+        const children = i === 0 ? [...beginParagraphMandatoryChildren, contentChild] : i === cachedEntries.length - 1 ? [contentChild, ...endParagraphMandatoryChildren] : [contentChild];
+        return new Paragraph({
+          style,
+          tabStops: this.getTabStopsForLevel(entry.level),
+          children
+        });
+      });
+      let paragraphs = cachedParagraphs;
+      if (cachedEntries.length <= 1) {
+        paragraphs = [
+          ...cachedParagraphs,
+          new Paragraph({
+            children: endParagraphMandatoryChildren
+          })
+        ];
+      }
+      for (const paragraph2 of paragraphs) {
+        content.addChildElement(paragraph2);
+      }
+    } else {
+      const beginParagraph = new Paragraph({
+        children: beginParagraphMandatoryChildren
+      });
+      content.addChildElement(beginParagraph);
+      for (const child of contentChildren) {
+        content.addChildElement(child);
+      }
+      const endParagraph = new Paragraph({
+        children: endParagraphMandatoryChildren
+      });
+      content.addChildElement(endParagraph);
+    }
+    this.root.push(content);
+  }
+  getTabStopsForLevel(level, pageWidth = 9025) {
+    const levelSpace = 240;
+    const levelPosition = pageWidth + 1 - (level - 1) * levelSpace;
+    return [
+      {
+        type: "clear",
+        position: levelPosition
+      },
+      {
+        type: "right",
+        position: pageWidth,
+        leader: "dot"
+      }
+    ];
+  }
+  buildCachedContentRun(entry, properties) {
+    var _a2, _b;
+    return new Run({
+      // TODO: The IndexLink style might always need to be set regardless of the hyperlink property. This needs to be verified.
+      style: (properties == null ? void 0 : properties.hyperlink) && entry.href !== void 0 ? "IndexLink" : void 0,
+      children: [
+        new Text({
+          text: entry.title
+        }),
+        new Tab(),
+        new Text({
+          text: (_b = (_a2 = entry.page) == null ? void 0 : _a2.toString()) != null ? _b : ""
+        })
+      ]
+    });
+  }
+  buildCachedContentParagraphChild(entry, properties) {
+    const run = this.buildCachedContentRun(entry, properties);
+    if ((properties == null ? void 0 : properties.hyperlink) && entry.href !== void 0) {
+      return new InternalHyperlink({
+        anchor: entry.href,
+        children: [run]
+      });
+    }
+    return run;
+  }
+};
+var StyleLevel = class {
+  constructor(styleName, level) {
+    __publicField(this, "styleName");
+    __publicField(this, "level");
+    this.styleName = styleName;
+    this.level = level;
+  }
+};
 var streamBrowserifyExports = requireStreamBrowserify();
-function commonjsRequire(path2) {
-  throw new Error('Could not dynamically require "' + path2 + '". Please configure the dynamicRequireTargets or/and ignoreDynamicRequires option of @rollup/plugin-commonjs appropriately for this require call to work.');
+function commonjsRequire(path) {
+  throw new Error('Could not dynamically require "' + path + '". Please configure the dynamicRequireTargets or/and ignoreDynamicRequires option of @rollup/plugin-commonjs appropriately for this require call to work.');
 }
 var jszip_min = { exports: {} };
 var hasRequiredJszip_min;
@@ -25960,9 +26415,7 @@ function getImageDimensions(buf) {
       }
       const marker = u8[offset + 1];
       if (marker === 192 || marker === 194) {
-        const height = view.getUint16(offset + 5);
-        const width = view.getUint16(offset + 7);
-        return { width, height };
+        return { width: view.getUint16(offset + 7), height: view.getUint16(offset + 5) };
       }
       const segLen = view.getUint16(offset + 2);
       offset += 2 + segLen;
@@ -25979,16 +26432,12 @@ function getImageDimensions(buf) {
     }
   }
   if (u8[0] === 82 && u8[1] === 73 && u8[2] === 70 && u8[3] === 70 && u8[8] === 87 && u8[9] === 69 && u8[10] === 66 && u8[11] === 80) {
-    if (u8[12] === 86 && u8[13] === 80 && u8[14] === 56 && u8[15] === 32) {
-      if (buf.byteLength >= 30) {
-        return { width: view.getUint16(26, true) & 16383, height: view.getUint16(28, true) & 16383 };
-      }
+    if (u8[12] === 86 && u8[13] === 80 && u8[14] === 56 && u8[15] === 32 && buf.byteLength >= 30) {
+      return { width: view.getUint16(26, true) & 16383, height: view.getUint16(28, true) & 16383 };
     }
-    if (u8[12] === 86 && u8[13] === 80 && u8[14] === 56 && u8[15] === 76) {
-      if (buf.byteLength >= 25) {
-        const bits = view.getUint32(21, true);
-        return { width: (bits & 16383) + 1, height: (bits >> 14 & 16383) + 1 };
-      }
+    if (u8[12] === 86 && u8[13] === 80 && u8[14] === 56 && u8[15] === 76 && buf.byteLength >= 25) {
+      const bits = view.getUint32(21, true);
+      return { width: (bits & 16383) + 1, height: (bits >> 14 & 16383) + 1 };
     }
   }
   return { width: 400, height: 300 };
@@ -26009,49 +26458,122 @@ function guessImageType(filename) {
   };
   return map2[ext] || "png";
 }
+function guessImageTypeFromUrl(url, contentType) {
+  var _a2;
+  const ext = ((_a2 = url.split("?")[0].split("#")[0].split(".").pop()) == null ? void 0 : _a2.toLowerCase()) || "";
+  const fromExt = guessImageType("img." + ext);
+  if (fromExt !== "png" || ext === "png") return fromExt;
+  if (contentType) {
+    if (contentType.includes("jpeg") || contentType.includes("jpg")) return "jpg";
+    if (contentType.includes("gif")) return "gif";
+    if (contentType.includes("bmp")) return "bmp";
+    if (contentType.includes("svg")) return "svg";
+  }
+  return "png";
+}
 
 // src/converter.ts
 var IMAGE_EXTS = /* @__PURE__ */ new Set(["png", "jpg", "jpeg", "gif", "webp", "svg", "bmp", "tif", "tiff"]);
+var CALLOUT_COLORS = {
+  note: "448AFF",
+  info: "448AFF",
+  tip: "00BFA5",
+  hint: "00BFA5",
+  important: "00BFA5",
+  warning: "FF9100",
+  caution: "FF9100",
+  attention: "FF9100",
+  danger: "FF5252",
+  error: "FF5252",
+  bug: "FF5252",
+  failure: "FF5252",
+  fail: "FF5252",
+  missing: "FF5252",
+  success: "00C853",
+  check: "00C853",
+  done: "00C853",
+  question: "64DD17",
+  help: "64DD17",
+  faq: "64DD17",
+  example: "7C4DFF",
+  abstract: "00B0FF",
+  summary: "00B0FF",
+  tldr: "00B0FF",
+  quote: "9E9E9E",
+  cite: "9E9E9E"
+};
 async function convertToDocx(markdown, title, app, sourceFile, settings) {
   const maxW = settings.imageSizing === "original" ? Infinity : settings.maxImageWidth;
-  const ctx = { app, sourceFile, settings, maxW, matched: 0, warnings: [] };
-  const normalized = normalizeObsidianMarkdown(markdown, ctx);
-  const md = new lib_default({ html: false, linkify: true, typographer: false, breaks: false });
+  const ctx = { app, sourceFile, settings, maxW, matched: 0, warnings: [], headings: [] };
+  const normalized = await normalizeObsidianMarkdown(markdown, ctx);
+  const md = new lib_default({ html: true, linkify: true, typographer: false, breaks: false });
+  md.enable("strikethrough");
+  md.use(footnote_plugin);
   const html = md.render(normalized);
   const parser = new DOMParser();
   const doc = parser.parseFromString(`<div id="r">${html}</div>`, "text/html");
   const root = doc.getElementById("r");
   const children = await convertBlocks(Array.from(root.childNodes), ctx);
+  const docChildren = [];
+  if (settings.enableToc && ctx.headings.length > 0) {
+    docChildren.push(
+      new TableOfContents("\u76EE\u5F55", {
+        hyperlink: true,
+        headingStyleRange: "1-6",
+        stylesWithLevels: [
+          new StyleLevel("Heading1", 1),
+          new StyleLevel("Heading2", 2),
+          new StyleLevel("Heading3", 3),
+          new StyleLevel("Heading4", 4),
+          new StyleLevel("Heading5", 5),
+          new StyleLevel("Heading6", 6)
+        ]
+      })
+    );
+    docChildren.push(new Paragraph({ spacing: { after: 300 } }));
+  }
+  docChildren.push(...children);
+  const fontSize = settings.fontSize * 2;
   const wordDoc = new File({
-    creator: "Obsidian Export Word",
+    creator: "Export to Word",
     title,
     description: "Exported from Obsidian",
-    sections: [{ properties: {}, children }]
+    styles: {
+      default: {
+        document: {
+          run: { font: settings.defaultFont, size: fontSize },
+          paragraph: { spacing: { after: 200 } }
+        },
+        heading1: { run: { font: settings.defaultFont, size: fontSize + 16, bold: true } },
+        heading2: { run: { font: settings.defaultFont, size: fontSize + 12, bold: true } },
+        heading3: { run: { font: settings.defaultFont, size: fontSize + 8, bold: true } },
+        heading4: { run: { font: settings.defaultFont, size: fontSize + 4, bold: true } }
+      }
+    },
+    features: { updateFields: true },
+    sections: [{
+      properties: {
+        page: {
+          size: { width: 12240, height: 15840 },
+          margin: { top: 1440, right: 1440, bottom: 1440, left: 1440 }
+        }
+      },
+      children: docChildren
+    }]
   });
-  const buffer2 = await Packer.toBuffer(wordDoc);
+  const blob = await Packer.toBlob(wordDoc);
+  const buffer2 = await blob.arrayBuffer();
   return { buffer: buffer2, matched: ctx.matched, warnings: ctx.warnings };
 }
-function normalizeObsidianMarkdown(text2, ctx) {
-  let out = text2.replace(/!\[\[([^\]]+)\]\]/g, (_, raw) => {
-    var _a2;
-    const parts = raw.trim().split("|");
-    const target = (parts[0] || "").trim();
-    const option = (parts[1] || "").trim();
-    const file = ctx.app.metadataCache.getFirstLinkpathDest(target, ctx.sourceFile.path);
-    if (!file) {
-      ctx.warnings.push(`\u5D4C\u5165\u6587\u4EF6\u672A\u627E\u5230\uFF1A${target}`);
-      return `**[\u7F3A\u5931\uFF1A${escMd(target)}]**`;
-    }
-    const ext = ((_a2 = file.extension) == null ? void 0 : _a2.toLowerCase()) || "";
-    if (!IMAGE_EXTS.has(ext)) {
-      return `**[\u5D4C\u5165\u6587\u4EF6\uFF1A${escMd(file.basename)}]**`;
-    }
-    const uri2 = encodeURI(file.path).replace(/\(/g, "%28").replace(/\)/g, "%29");
-    if (/^\d+$/.test(option)) {
-      return `![${escMd(file.basename)}](${uri2} "width=${option}")`;
-    }
-    return `![${escMd(option || file.basename)}](${uri2})`;
-  });
+async function normalizeObsidianMarkdown(text2, ctx) {
+  let out = text2;
+  out = out.replace(/^---[\s\S]*?---\n*/, "");
+  const embedRegex = /!\[\[([^\]]+)\]\]/g;
+  const embedMatches = [...out.matchAll(embedRegex)];
+  for (const m of embedMatches.reverse()) {
+    const replacement = await processEmbed(m[1].trim(), ctx);
+    out = out.slice(0, m.index) + replacement + out.slice(m.index + m[0].length);
+  }
   out = out.replace(/\[\[([^\]]+)\]\]/g, (_, raw) => {
     const parts = raw.trim().split("|");
     const target = (parts[0] || "").trim();
@@ -26060,7 +26582,72 @@ function normalizeObsidianMarkdown(text2, ctx) {
     const base2 = target.split("/").pop() || target;
     return base2.replace(/\.[^.]+$/, "");
   });
+  out = out.replace(/==(.*?)==/g, "<mark>$1</mark>");
+  out = out.replace(/(^|\s)#([a-zA-Z\u4e00-\u9fff][\w\u4e00-\u9fff/-]*)/g, "$1`#$2`");
+  if (ctx.settings.enableCallouts) {
+    out = preprocessCallouts(out);
+  }
   return out;
+}
+async function processEmbed(rawContent, ctx) {
+  var _a2;
+  const parts = rawContent.split("|");
+  const target = (parts[0] || "").trim();
+  const option = (parts[1] || "").trim();
+  const file = ctx.app.metadataCache.getFirstLinkpathDest(target, ctx.sourceFile.path);
+  if (!file) {
+    ctx.warnings.push(`\u5D4C\u5165\u6587\u4EF6\u672A\u627E\u5230\uFF1A${target}`);
+    return `**[\u7F3A\u5931\uFF1A${escMd(target)}]**`;
+  }
+  const ext = ((_a2 = file.extension) == null ? void 0 : _a2.toLowerCase()) || "";
+  if (IMAGE_EXTS.has(ext)) {
+    const uri2 = encodeURI(file.path).replace(/\(/g, "%28").replace(/\)/g, "%29");
+    if (/^\d+$/.test(option)) return `![${escMd(file.basename)}](${uri2} "width=${option}")`;
+    return `![${escMd(option || file.basename)}](${uri2})`;
+  }
+  if (ext === "md") {
+    try {
+      const content = await ctx.app.vault.cachedRead(file);
+      const stripped = content.replace(/^---[\s\S]*?---\n*/, "");
+      return `
+
+${stripped}
+
+`;
+    } catch (e) {
+      return `**[\u5D4C\u5165\u6587\u4EF6\uFF1A${escMd(file.basename)}]**`;
+    }
+  }
+  return `**[\u5D4C\u5165\u6587\u4EF6\uFF1A${escMd(file.basename)}]**`;
+}
+function preprocessCallouts(text2) {
+  const lines = text2.split("\n");
+  const result = [];
+  let i = 0;
+  while (i < lines.length) {
+    const calloutMatch = lines[i].match(/^>\s*\[!([\w-]+)\]([+-]?)(?:\s+(.*))?$/);
+    if (calloutMatch) {
+      const type2 = calloutMatch[1].toLowerCase();
+      const title = calloutMatch[3] || type2.charAt(0).toUpperCase() + type2.slice(1);
+      const bodyLines = [];
+      i++;
+      while (i < lines.length && lines[i].match(/^>\s?/)) {
+        bodyLines.push(lines[i].replace(/^>\s?/, ""));
+        i++;
+      }
+      const color = CALLOUT_COLORS[type2] || "448AFF";
+      const body = bodyLines.join("\n").trim();
+      result.push(`<div class="callout" data-type="${type2}" data-color="${color}" data-title="${escHtml(title)}">${escHtml(body)}</div>`);
+      result.push("");
+    } else {
+      result.push(lines[i]);
+      i++;
+    }
+  }
+  return result.join("\n");
+}
+function escHtml(s) {
+  return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
 }
 async function convertBlocks(nodes, ctx) {
   var _a2;
@@ -26071,7 +26658,10 @@ async function convertBlocks(nodes, ctx) {
     const el = node;
     const tag = el.tagName;
     if (/^H[1-6]$/.test(tag)) {
-      const level = `HEADING_${tag.slice(1)}`;
+      const levelNum = parseInt(tag.slice(1));
+      const level = `HEADING_${levelNum}`;
+      const text2 = el.textContent || "";
+      ctx.headings.push({ level: levelNum, text: text2 });
       blocks.push(new Paragraph({
         heading: HeadingLevel[level],
         spacing: { after: 220 },
@@ -26093,7 +26683,8 @@ async function convertBlocks(nodes, ctx) {
         indent: { left: 240, right: 120 },
         children: [new TextRun({
           text: (code2 ? code2.textContent : el.textContent || "").replace(/\n$/, ""),
-          font: "Courier New"
+          font: "Courier New",
+          size: (ctx.settings.fontSize - 1) * 2
         })]
       }));
     } else if (tag === "BLOCKQUOTE") {
@@ -26101,11 +26692,7 @@ async function convertBlocks(nodes, ctx) {
         spacing: { after: 180 },
         border: { left: { style: BorderStyle.SINGLE, size: 12, color: "4F6EF7" } },
         indent: { left: 280 },
-        children: [new TextRun({
-          text: (el.textContent || "").trim(),
-          italics: true,
-          color: "4B5061"
-        })]
+        children: [new TextRun({ text: (el.textContent || "").trim(), italics: true, color: "4B5061" })]
       }));
     } else if (tag === "HR") {
       blocks.push(new Paragraph({
@@ -26114,9 +26701,63 @@ async function convertBlocks(nodes, ctx) {
       }));
     } else if (tag === "TABLE") {
       blocks.push(await convertTable(el, ctx));
+    } else if (tag === "DIV" && el.classList.contains("callout")) {
+      blocks.push(...convertCallout(el, ctx));
+    } else if (tag === "SECTION" && el.classList.contains("footnotes")) {
+      blocks.push(...convertFootnotes(el, ctx));
+    } else {
+      const sub = await convertBlocks(Array.from(el.childNodes), ctx);
+      blocks.push(...sub);
     }
   }
   return blocks.length ? blocks : [new Paragraph(" ")];
+}
+function convertCallout(el, ctx) {
+  const color = el.getAttribute("data-color") || "448AFF";
+  const title = el.getAttribute("data-title") || "";
+  const body = el.textContent || "";
+  const paragraphs = [];
+  if (title) {
+    paragraphs.push(new Paragraph({
+      spacing: { after: 80 },
+      border: { left: { style: BorderStyle.SINGLE, size: 14, color } },
+      shading: { fill: color + "18" },
+      indent: { left: 280 },
+      children: [new TextRun({ text: title, bold: true, color })]
+    }));
+  }
+  if (body) {
+    paragraphs.push(new Paragraph({
+      spacing: { after: 180 },
+      border: { left: { style: BorderStyle.SINGLE, size: 14, color } },
+      shading: { fill: color + "08" },
+      indent: { left: 280 },
+      children: [new TextRun({ text: body, color: "4B5061" })]
+    }));
+  }
+  return paragraphs;
+}
+function convertFootnotes(el, ctx) {
+  var _a2;
+  const paragraphs = [];
+  paragraphs.push(new Paragraph({
+    spacing: { before: 400, after: 200 },
+    border: { top: { style: BorderStyle.SINGLE, size: 4, color: "E2E4EA" } }
+  }));
+  const items = el.querySelectorAll("li");
+  let idx = 1;
+  for (const li of Array.from(items)) {
+    const text2 = ((_a2 = li.textContent) == null ? void 0 : _a2.replace(/\s*↩︎?\s*$/, "").trim()) || "";
+    paragraphs.push(new Paragraph({
+      spacing: { after: 80 },
+      children: [
+        new TextRun({ text: `${idx}. `, bold: true, size: 20, color: "6B7280" }),
+        new TextRun({ text: text2, size: 20, color: "6B7280" })
+      ]
+    }));
+    idx++;
+  }
+  return paragraphs;
 }
 async function inlines(nodeList, ctx, style = {}) {
   const out = [];
@@ -26128,8 +26769,11 @@ async function inlines(nodeList, ctx, style = {}) {
           bold: style.bold,
           italics: style.italics,
           underline: style.underline ? {} : void 0,
+          strike: style.strike,
           color: style.color,
-          font: style.font
+          font: style.font,
+          highlight: style.highlight,
+          superScript: style.superScript
         }));
       }
       continue;
@@ -26141,6 +26785,12 @@ async function inlines(nodeList, ctx, style = {}) {
       out.push(...await inlines(el.childNodes, ctx, { ...style, bold: true }));
     } else if (tag === "EM" || tag === "I") {
       out.push(...await inlines(el.childNodes, ctx, { ...style, italics: true }));
+    } else if (tag === "S" || tag === "DEL") {
+      out.push(...await inlines(el.childNodes, ctx, { ...style, strike: true }));
+    } else if (tag === "MARK") {
+      out.push(...await inlines(el.childNodes, ctx, { ...style, highlight: "yellow" }));
+    } else if (tag === "SUP") {
+      out.push(...await inlines(el.childNodes, ctx, { ...style, superScript: true }));
     } else if (tag === "CODE") {
       out.push(new TextRun({
         text: el.textContent || "",
@@ -26149,8 +26799,10 @@ async function inlines(nodeList, ctx, style = {}) {
         italics: style.italics
       }));
     } else if (tag === "A") {
+      const href = el.getAttribute("href") || "";
+      if (href.startsWith("#") && el.classList.contains("footnote-backref")) continue;
       out.push(new ExternalHyperlink({
-        link: el.getAttribute("href") || "",
+        link: href,
         children: await inlines(el.childNodes, ctx, { ...style, color: "4F6EF7", underline: true })
       }));
     } else if (tag === "BR") {
@@ -26165,6 +26817,9 @@ async function inlines(nodeList, ctx, style = {}) {
 }
 async function convertImage(el, ctx) {
   const rawSrc = decodeURI(el.getAttribute("src") || "");
+  if (rawSrc.startsWith("http://") || rawSrc.startsWith("https://")) {
+    return await fetchWebImage(rawSrc, el, ctx);
+  }
   const file = resolveImage(rawSrc, ctx);
   if (!file) {
     ctx.warnings.push(`\u672A\u5339\u914D\u5230\u56FE\u7247\uFF1A${rawSrc}`);
@@ -26177,6 +26832,21 @@ async function convertImage(el, ctx) {
     ctx.warnings.push(`\u65E0\u6CD5\u8BFB\u53D6\u56FE\u7247\uFF1A${file.path}`);
     return new TextRun({ text: `[\u65E0\u6CD5\u8BFB\u53D6\uFF1A${file.path}]`, color: "D94545", italics: true });
   }
+  return buildImageRun(buf, file.name, el, ctx);
+}
+async function fetchWebImage(url, el, ctx) {
+  try {
+    const response = await (0, import_obsidian.requestUrl)({ url });
+    const buf = response.arrayBuffer;
+    const contentType = response.headers["content-type"] || "";
+    const filename = url.split("?")[0].split("/").pop() || "image.png";
+    return buildImageRun(buf, filename, el, ctx, contentType);
+  } catch (err) {
+    ctx.warnings.push(`\u7F51\u7EDC\u56FE\u7247\u4E0B\u8F7D\u5931\u8D25\uFF1A${url}`);
+    return new TextRun({ text: `[\u7F51\u7EDC\u56FE\u7247\u5931\u8D25\uFF1A${url}]`, color: "D94545", italics: true });
+  }
+}
+function buildImageRun(buf, filename, el, ctx, contentType) {
   const dim = getImageDimensions(buf);
   const explicitW = extractExplicitWidth(el.getAttribute("title"));
   let width, height;
@@ -26190,14 +26860,14 @@ async function convertImage(el, ctx) {
     width = Math.min(ctx.maxW, dim.width);
     height = Math.max(1, Math.round(dim.height * (width / dim.width)));
   }
-  const imageType = guessImageType(file.name);
-  const alt = el.getAttribute("alt") || file.basename;
+  const imageType = contentType ? guessImageTypeFromUrl(filename, contentType) : guessImageType(filename);
+  const alt = el.getAttribute("alt") || filename;
   ctx.matched++;
   return new ImageRun({
     data: buf,
     type: imageType,
     transformation: { width, height },
-    altText: { title: alt, description: alt, name: file.name }
+    altText: { title: alt, description: alt, name: filename }
   });
 }
 function resolveImage(rawSrc, ctx) {
@@ -26211,9 +26881,9 @@ function resolveImage(rawSrc, ctx) {
     const relative = ctx.app.vault.getAbstractFileByPath((0, import_obsidian.normalizePath)(`${sourceDir}/${rawSrc}`));
     if (relative instanceof import_obsidian.TFile) return relative;
   }
-  const basename2 = rawSrc.split("/").pop() || rawSrc;
-  if (basename2 !== rawSrc) {
-    const byName = ctx.app.metadataCache.getFirstLinkpathDest(basename2, ctx.sourceFile.path);
+  const basename = rawSrc.split("/").pop() || rawSrc;
+  if (basename !== rawSrc) {
+    const byName = ctx.app.metadataCache.getFirstLinkpathDest(basename, ctx.sourceFile.path);
     if (byName instanceof import_obsidian.TFile) return byName;
   }
   return null;
@@ -26224,8 +26894,7 @@ async function convertList(el, ctx, level) {
   let idx = parseInt(el.getAttribute("start") || "1", 10);
   for (const li of Array.from(el.children)) {
     if (li.tagName !== "LI") continue;
-    const direct = [];
-    const nested = [];
+    const direct = [], nested = [];
     for (const c of Array.from(li.childNodes)) {
       if (c.nodeType === Node.ELEMENT_NODE && (c.tagName === "UL" || c.tagName === "OL")) {
         nested.push(c);
@@ -26251,10 +26920,7 @@ async function convertTable(el, ctx) {
     const cells = [];
     for (const td of Array.from(tr.children)) {
       cells.push(new TableCell({
-        children: [new Paragraph({
-          spacing: { after: 80 },
-          children: await inlines(td.childNodes, ctx)
-        })]
+        children: [new Paragraph({ spacing: { after: 80 }, children: await inlines(td.childNodes, ctx) })]
       }));
     }
     rows.push(new TableRow({
@@ -26275,12 +26941,16 @@ function extractExplicitWidth(title) {
 // src/settings.ts
 var import_obsidian2 = require("obsidian");
 var DEFAULT_SETTINGS = {
-  outputLocation: "desktop",
+  outputLocation: import_obsidian2.Platform.isMobileApp ? "same-folder" : "desktop",
   customOutputPath: "",
   imageSizing: "original",
   maxImageWidth: 600,
   titleSource: "filename",
-  customTitleFormat: "{filename}"
+  customTitleFormat: "{filename}",
+  enableToc: false,
+  enableCallouts: true,
+  defaultFont: "Calibri",
+  fontSize: 12
 };
 var ExportWordSettingTab = class extends import_obsidian2.PluginSettingTab {
   constructor(app, plugin) {
@@ -26290,14 +26960,23 @@ var ExportWordSettingTab = class extends import_obsidian2.PluginSettingTab {
   display() {
     const { containerEl } = this;
     containerEl.empty();
-    new import_obsidian2.Setting(containerEl).setName("\u5BFC\u51FA\u4F4D\u7F6E").setDesc("\u751F\u6210\u7684 .docx \u6587\u4EF6\u4FDD\u5B58\u5230\u54EA\u91CC").addDropdown(
-      (d) => d.addOption("desktop", "\u684C\u9762").addOption("downloads", "\u4E0B\u8F7D\u6587\u4EF6\u5939").addOption("same-folder", "\u548C\u7B14\u8BB0\u540C\u76EE\u5F55").addOption("custom", "\u81EA\u5B9A\u4E49\u8DEF\u5F84").setValue(this.plugin.settings.outputLocation).onChange(async (v) => {
+    containerEl.createEl("h3", { text: "\u5BFC\u51FA\u8BBE\u7F6E" });
+    const locationSetting = new import_obsidian2.Setting(containerEl).setName("\u5BFC\u51FA\u4F4D\u7F6E").setDesc("\u751F\u6210\u7684 .docx \u6587\u4EF6\u4FDD\u5B58\u5230\u54EA\u91CC").addDropdown((d) => {
+      if (import_obsidian2.Platform.isDesktopApp) {
+        d.addOption("desktop", "\u684C\u9762");
+        d.addOption("downloads", "\u4E0B\u8F7D\u6587\u4EF6\u5939");
+      }
+      d.addOption("same-folder", "\u548C\u7B14\u8BB0\u540C\u76EE\u5F55");
+      if (import_obsidian2.Platform.isDesktopApp) {
+        d.addOption("custom", "\u81EA\u5B9A\u4E49\u8DEF\u5F84");
+      }
+      d.setValue(this.plugin.settings.outputLocation).onChange(async (v) => {
         this.plugin.settings.outputLocation = v;
         await this.plugin.saveSettings();
         this.display();
-      })
-    );
-    if (this.plugin.settings.outputLocation === "custom") {
+      });
+    });
+    if (this.plugin.settings.outputLocation === "custom" && import_obsidian2.Platform.isDesktopApp) {
       const pathSetting = new import_obsidian2.Setting(containerEl).setName("\u81EA\u5B9A\u4E49\u5BFC\u51FA\u8DEF\u5F84").setDesc(this.plugin.settings.customOutputPath || "\u5C1A\u672A\u9009\u62E9\uFF0C\u8BF7\u70B9\u51FB\u53F3\u4FA7\u6309\u94AE\u9009\u62E9\u6587\u4EF6\u5939").addText(
         (t) => t.setPlaceholder("\u70B9\u51FB\u53F3\u4FA7\u6309\u94AE\u9009\u62E9\uFF0C\u6216\u624B\u52A8\u8F93\u5165\u8DEF\u5F84").setValue(this.plugin.settings.customOutputPath).onChange(async (v) => {
           this.plugin.settings.customOutputPath = v.trim();
@@ -26318,7 +26997,6 @@ var ExportWordSettingTab = class extends import_obsidian2.PluginSettingTab {
               this.display();
             }
           } catch (e) {
-            new (require("obsidian")).Notice("\u65E0\u6CD5\u6253\u5F00\u6587\u4EF6\u5939\u9009\u62E9\u5668\uFF0C\u8BF7\u624B\u52A8\u8F93\u5165\u8DEF\u5F84");
           }
         })
       );
@@ -26351,15 +27029,42 @@ var ExportWordSettingTab = class extends import_obsidian2.PluginSettingTab {
       })
     );
     if (this.plugin.settings.titleSource === "custom") {
-      new import_obsidian2.Setting(containerEl).setName("\u81EA\u5B9A\u4E49\u6807\u9898\u683C\u5F0F").setDesc(
-        "\u53EF\u7528\u53D8\u91CF\uFF1A{filename} \u6587\u4EF6\u540D\u3001{heading} \u7B2C\u4E00\u4E2A\u6807\u9898\u3001{date} \u4ECA\u5929\u65E5\u671F\uFF082026-03-27\uFF09\u3001{time} \u5F53\u524D\u65F6\u95F4\uFF0814-30\uFF09\u3002\u4F8B\u5982\uFF1A{filename} - {date}"
-      ).addText(
+      new import_obsidian2.Setting(containerEl).setName("\u81EA\u5B9A\u4E49\u6807\u9898\u683C\u5F0F").setDesc("\u53EF\u7528\u53D8\u91CF\uFF1A{filename} {heading} {date} {time}\u3002\u4F8B\u5982\uFF1A{filename} - {date}").addText(
         (t) => t.setPlaceholder("{filename} - {date}").setValue(this.plugin.settings.customTitleFormat).onChange(async (v) => {
           this.plugin.settings.customTitleFormat = v;
           await this.plugin.saveSettings();
         })
       );
     }
+    containerEl.createEl("h3", { text: "\u9AD8\u7EA7\u529F\u80FD" });
+    new import_obsidian2.Setting(containerEl).setName("\u81EA\u52A8\u751F\u6210\u76EE\u5F55").setDesc("\u5728\u6587\u6863\u5F00\u5934\u63D2\u5165\u76EE\u5F55\uFF08Table of Contents\uFF09").addToggle(
+      (t) => t.setValue(this.plugin.settings.enableToc).onChange(async (v) => {
+        this.plugin.settings.enableToc = v;
+        await this.plugin.saveSettings();
+      })
+    );
+    new import_obsidian2.Setting(containerEl).setName("\u6E32\u67D3 Callout").setDesc("\u5C06 > [!note] \u7B49 Callout \u8BED\u6CD5\u8F6C\u4E3A\u5E26\u989C\u8272\u6807\u8BB0\u7684\u5F15\u7528\u5757").addToggle(
+      (t) => t.setValue(this.plugin.settings.enableCallouts).onChange(async (v) => {
+        this.plugin.settings.enableCallouts = v;
+        await this.plugin.saveSettings();
+      })
+    );
+    containerEl.createEl("h3", { text: "Word \u6837\u5F0F" });
+    new import_obsidian2.Setting(containerEl).setName("\u9ED8\u8BA4\u5B57\u4F53").setDesc("Word \u6587\u6863\u7684\u6B63\u6587\u5B57\u4F53").addText(
+      (t) => t.setValue(this.plugin.settings.defaultFont).onChange(async (v) => {
+        this.plugin.settings.defaultFont = v.trim() || "Calibri";
+        await this.plugin.saveSettings();
+      })
+    );
+    new import_obsidian2.Setting(containerEl).setName("\u6B63\u6587\u5B57\u53F7").setDesc("Word \u6587\u6863\u7684\u6B63\u6587\u5B57\u53F7\uFF08pt\uFF09").addText(
+      (t) => t.setValue(String(this.plugin.settings.fontSize)).onChange(async (v) => {
+        const n = parseInt(v, 10);
+        if (n > 0 && n <= 72) {
+          this.plugin.settings.fontSize = n;
+          await this.plugin.saveSettings();
+        }
+      })
+    );
   }
 };
 
@@ -26383,6 +27088,19 @@ var ExportWordPlugin = class extends import_obsidian3.Plugin {
         return true;
       }
     });
+    this.addCommand({
+      id: "export-folder-to-word",
+      name: "Batch export folder to Word",
+      icon: "folder-down",
+      callback: () => {
+        const file = this.app.workspace.getActiveFile();
+        if (file == null ? void 0 : file.parent) {
+          this.exportFolder(file.parent);
+        } else {
+          new import_obsidian3.Notice("\u8BF7\u5148\u6253\u5F00\u67D0\u4E2A\u6587\u4EF6\u5939\u4E2D\u7684\u7B14\u8BB0");
+        }
+      }
+    });
     this.addRibbonIcon("file-down", "\u5BFC\u51FA\u5F53\u524D\u7B14\u8BB0\u4E3A Word", () => {
       const file = this.app.workspace.getActiveFile();
       if (!file || file.extension !== "md") {
@@ -26393,10 +27111,16 @@ var ExportWordPlugin = class extends import_obsidian3.Plugin {
     });
     this.registerEvent(
       this.app.workspace.on("file-menu", (menu, file) => {
-        if (!(file instanceof import_obsidian3.TFile) || file.extension !== "md") return;
-        menu.addItem((item) => {
-          item.setTitle("\u5BFC\u51FA\u4E3A Word").setIcon("file-down").onClick(() => this.exportNote(file));
-        });
+        if (file instanceof import_obsidian3.TFile && file.extension === "md") {
+          menu.addItem((item) => {
+            item.setTitle("\u5BFC\u51FA\u4E3A Word").setIcon("file-down").onClick(() => this.exportNote(file));
+          });
+        }
+        if (file instanceof import_obsidian3.TFolder) {
+          menu.addItem((item) => {
+            item.setTitle("\u6279\u91CF\u5BFC\u51FA\u4E3A Word").setIcon("folder-down").onClick(() => this.exportFolder(file));
+          });
+        }
       })
     );
     this.registerEvent(
@@ -26417,8 +27141,9 @@ var ExportWordPlugin = class extends import_obsidian3.Plugin {
   async saveSettings() {
     await this.saveData(this.settings);
   }
-  async exportNote(file) {
-    new import_obsidian3.Notice("\u6B63\u5728\u5BFC\u51FA Word...");
+  /* ── Single note export ── */
+  async exportNote(file, silent = false) {
+    if (!silent) new import_obsidian3.Notice("\u6B63\u5728\u5BFC\u51FA Word...");
     try {
       const markdown = await this.app.vault.cachedRead(file);
       const title = this.resolveTitle(file, markdown);
@@ -26429,26 +27154,88 @@ var ExportWordPlugin = class extends import_obsidian3.Plugin {
         file,
         this.settings
       );
-      const outputPath = this.resolveOutputPath(file, title);
-      const dir = path.dirname(outputPath);
-      if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
-      fs.writeFileSync(outputPath, Buffer.from(buffer2));
-      const basename2 = path.basename(outputPath);
-      const locationLabel = this.getLocationLabel(outputPath);
-      let msg = `\u5BFC\u51FA\u6210\u529F\uFF1A${basename2}
-\u{1F4CD} \u5DF2\u4FDD\u5B58\u5230\uFF1A${locationLabel}
+      const outputName = await this.saveDocx(file, title, buffer2);
+      if (!silent) {
+        let msg = `\u5BFC\u51FA\u6210\u529F\uFF1A${outputName}
 \u{1F5BC} ${matched} \u5F20\u56FE\u7247`;
-      if (warnings.length) {
-        msg += `
+        if (warnings.length) {
+          msg += `
 \u26A0\uFE0F ${warnings.length} \u4E2A\u8B66\u544A\uFF0C\u8BE6\u89C1\u63A7\u5236\u53F0`;
-        console.warn("[export-word] warnings:", warnings);
+          console.warn("[export-word] warnings:", warnings);
+        }
+        new import_obsidian3.Notice(msg, 6e3);
       }
-      new import_obsidian3.Notice(msg, 8e3);
+      return true;
     } catch (err) {
       console.error("[export-word]", err);
-      new import_obsidian3.Notice(`\u5BFC\u51FA\u5931\u8D25\uFF1A${err.message}`, 8e3);
+      if (!silent) new import_obsidian3.Notice(`\u5BFC\u51FA\u5931\u8D25\uFF1A${err.message}`, 8e3);
+      return false;
     }
   }
+  /* ── Batch export ── */
+  async exportFolder(folder) {
+    const mdFiles = folder.children.filter(
+      (f) => f instanceof import_obsidian3.TFile && f.extension === "md"
+    );
+    if (mdFiles.length === 0) {
+      new import_obsidian3.Notice("\u8BE5\u6587\u4EF6\u5939\u4E2D\u6CA1\u6709 Markdown \u7B14\u8BB0");
+      return;
+    }
+    new import_obsidian3.Notice(`\u5F00\u59CB\u6279\u91CF\u5BFC\u51FA ${mdFiles.length} \u7BC7\u7B14\u8BB0...`);
+    let success = 0;
+    let fail = 0;
+    for (const file of mdFiles) {
+      const ok = await this.exportNote(file, true);
+      if (ok) success++;
+      else fail++;
+    }
+    let msg = `\u6279\u91CF\u5BFC\u51FA\u5B8C\u6210\uFF1A${success} \u7BC7\u6210\u529F`;
+    if (fail > 0) msg += `\uFF0C${fail} \u7BC7\u5931\u8D25`;
+    new import_obsidian3.Notice(msg, 8e3);
+  }
+  /* ── Save docx ── */
+  async saveDocx(file, title, arrayBuffer) {
+    var _a2;
+    const safe = title.replace(/[\\/:*?"<>|]/g, "_");
+    const filename = `${safe}.docx`;
+    const location = this.settings.outputLocation;
+    if (import_obsidian3.Platform.isMobileApp || location === "same-folder") {
+      const parentDir = ((_a2 = file.parent) == null ? void 0 : _a2.path) || "";
+      const vaultPath = (0, import_obsidian3.normalizePath)(parentDir ? `${parentDir}/${filename}` : filename);
+      const existing = this.app.vault.getAbstractFileByPath(vaultPath);
+      if (existing instanceof import_obsidian3.TFile) {
+        await this.app.vault.modifyBinary(existing, arrayBuffer);
+      } else {
+        await this.app.vault.createBinary(vaultPath, arrayBuffer);
+      }
+      return vaultPath;
+    }
+    const path = require("path");
+    const os = require("os");
+    const fs = require("fs");
+    let dir;
+    switch (location) {
+      case "desktop":
+        dir = path.join(os.homedir(), "Desktop");
+        break;
+      case "downloads":
+        dir = path.join(os.homedir(), "Downloads");
+        break;
+      case "custom":
+        dir = this.settings.customOutputPath || path.join(os.homedir(), "Desktop");
+        break;
+      default:
+        dir = path.join(os.homedir(), "Desktop");
+    }
+    if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+    const outputPath = path.join(dir, filename);
+    fs.writeFileSync(outputPath, Buffer.from(arrayBuffer));
+    const home = os.homedir();
+    if (outputPath.startsWith(path.join(home, "Desktop"))) return `\u684C\u9762/${filename}`;
+    if (outputPath.startsWith(path.join(home, "Downloads"))) return `\u4E0B\u8F7D/${filename}`;
+    return outputPath;
+  }
+  /* ── Title resolution ── */
   resolveTitle(file, markdown) {
     var _a2, _b;
     if (this.settings.titleSource === "first-heading") {
@@ -26465,34 +27252,5 @@ var ExportWordPlugin = class extends import_obsidian3.Plugin {
       return fmt.replace(/\{filename\}/g, file.basename).replace(/\{heading\}/g, heading2).replace(/\{date\}/g, dateStr).replace(/\{time\}/g, timeStr);
     }
     return file.basename;
-  }
-  getLocationLabel(outputPath) {
-    const home = os.homedir();
-    const desktop = path.join(home, "Desktop");
-    const downloads = path.join(home, "Downloads");
-    if (outputPath.startsWith(desktop)) return `\u684C\u9762/${path.basename(outputPath)}`;
-    if (outputPath.startsWith(downloads)) return `\u4E0B\u8F7D/${path.basename(outputPath)}`;
-    return outputPath;
-  }
-  resolveOutputPath(file, title) {
-    var _a2;
-    const safe = title.replace(/[\\/:*?"<>|]/g, "_");
-    switch (this.settings.outputLocation) {
-      case "desktop":
-        return path.join(os.homedir(), "Desktop", `${safe}.docx`);
-      case "downloads":
-        return path.join(os.homedir(), "Downloads", `${safe}.docx`);
-      case "same-folder": {
-        const vaultBase = this.app.vault.adapter.basePath;
-        const parentDir = ((_a2 = file.parent) == null ? void 0 : _a2.path) || "";
-        return path.join(vaultBase, parentDir, `${safe}.docx`);
-      }
-      case "custom": {
-        const customDir = this.settings.customOutputPath || path.join(os.homedir(), "Desktop");
-        return path.join(customDir, `${safe}.docx`);
-      }
-      default:
-        return path.join(os.homedir(), "Desktop", `${safe}.docx`);
-    }
   }
 };
