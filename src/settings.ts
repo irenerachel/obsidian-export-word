@@ -10,8 +10,17 @@ export interface ExportWordSettings {
   customTitleFormat: string;
   enableToc: boolean;
   enableCallouts: boolean;
+  enableCoverPage: boolean;
+  coverAuthor: string;
+  enablePageNumbers: boolean;
+  headerText: string;
+  enableH1PageBreak: boolean;
+  enableSmartFont: boolean;
   defaultFont: string;
+  cjkFont: string;
   fontSize: number;
+  enableWatermark: boolean;
+  watermarkText: string;
 }
 
 export const DEFAULT_SETTINGS: ExportWordSettings = {
@@ -23,8 +32,17 @@ export const DEFAULT_SETTINGS: ExportWordSettings = {
   customTitleFormat: "{filename}",
   enableToc: false,
   enableCallouts: true,
+  enableCoverPage: false,
+  coverAuthor: "",
+  enablePageNumbers: true,
+  headerText: "",
+  enableH1PageBreak: false,
+  enableSmartFont: true,
   defaultFont: "Calibri",
+  cjkFont: "PingFang SC",
   fontSize: 12,
+  enableWatermark: false,
+  watermarkText: "",
 };
 
 export class ExportWordSettingTab extends PluginSettingTab {
@@ -153,6 +171,54 @@ export class ExportWordSettingTab extends PluginSettingTab {
         );
     }
 
+    /* ── 页面布局 ── */
+    containerEl.createEl("h3", { text: "页面布局" });
+
+    new Setting(containerEl)
+      .setName("封面页")
+      .setDesc("在文档开头生成带标题、作者、日期的封面页")
+      .addToggle((t) =>
+        t.setValue(this.plugin.settings.enableCoverPage).onChange(async (v) => {
+          this.plugin.settings.enableCoverPage = v; await this.plugin.saveSettings(); this.display();
+        })
+      );
+
+    if (this.plugin.settings.enableCoverPage) {
+      new Setting(containerEl)
+        .setName("封面作者名")
+        .setDesc("留空则不显示作者")
+        .addText((t) =>
+          t.setPlaceholder("阿真Irene").setValue(this.plugin.settings.coverAuthor)
+            .onChange(async (v) => { this.plugin.settings.coverAuthor = v; await this.plugin.saveSettings(); })
+        );
+    }
+
+    new Setting(containerEl)
+      .setName("页码")
+      .setDesc("在页脚显示页码")
+      .addToggle((t) =>
+        t.setValue(this.plugin.settings.enablePageNumbers).onChange(async (v) => {
+          this.plugin.settings.enablePageNumbers = v; await this.plugin.saveSettings();
+        })
+      );
+
+    new Setting(containerEl)
+      .setName("页眉文字")
+      .setDesc("留空则不显示页眉。支持 {title} 变量")
+      .addText((t) =>
+        t.setPlaceholder("").setValue(this.plugin.settings.headerText)
+          .onChange(async (v) => { this.plugin.settings.headerText = v; await this.plugin.saveSettings(); })
+      );
+
+    new Setting(containerEl)
+      .setName("H1 前自动分页")
+      .setDesc("每个一级标题前插入分页符，适合多章节长文")
+      .addToggle((t) =>
+        t.setValue(this.plugin.settings.enableH1PageBreak).onChange(async (v) => {
+          this.plugin.settings.enableH1PageBreak = v; await this.plugin.saveSettings();
+        })
+      );
+
     /* ── 高级功能 ── */
     containerEl.createEl("h3", { text: "高级功能" });
 
@@ -174,17 +240,54 @@ export class ExportWordSettingTab extends PluginSettingTab {
         })
       );
 
+    new Setting(containerEl)
+      .setName("水印")
+      .setDesc("在文档中添加文字水印")
+      .addToggle((t) =>
+        t.setValue(this.plugin.settings.enableWatermark).onChange(async (v) => {
+          this.plugin.settings.enableWatermark = v; await this.plugin.saveSettings(); this.display();
+        })
+      );
+
+    if (this.plugin.settings.enableWatermark) {
+      new Setting(containerEl)
+        .setName("水印文字")
+        .addText((t) =>
+          t.setPlaceholder("CONFIDENTIAL").setValue(this.plugin.settings.watermarkText)
+            .onChange(async (v) => { this.plugin.settings.watermarkText = v; await this.plugin.saveSettings(); })
+        );
+    }
+
     /* ── 样式 ── */
     containerEl.createEl("h3", { text: "Word 样式" });
 
     new Setting(containerEl)
-      .setName("默认字体")
-      .setDesc("Word 文档的正文字体")
+      .setName("中英文智能字体")
+      .setDesc("自动为中文和英文分别应用不同字体")
+      .addToggle((t) =>
+        t.setValue(this.plugin.settings.enableSmartFont).onChange(async (v) => {
+          this.plugin.settings.enableSmartFont = v; await this.plugin.saveSettings(); this.display();
+        })
+      );
+
+    new Setting(containerEl)
+      .setName("英文/默认字体")
       .addText((t) =>
         t.setValue(this.plugin.settings.defaultFont).onChange(async (v) => {
           this.plugin.settings.defaultFont = v.trim() || "Calibri"; await this.plugin.saveSettings();
         })
       );
+
+    if (this.plugin.settings.enableSmartFont) {
+      new Setting(containerEl)
+        .setName("中文字体")
+        .setDesc("用于中日韩文字")
+        .addText((t) =>
+          t.setValue(this.plugin.settings.cjkFont).onChange(async (v) => {
+            this.plugin.settings.cjkFont = v.trim() || "PingFang SC"; await this.plugin.saveSettings();
+          })
+        );
+    }
 
     new Setting(containerEl)
       .setName("正文字号")

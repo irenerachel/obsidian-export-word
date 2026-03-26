@@ -97,14 +97,15 @@ export default class ExportWordPlugin extends Plugin {
       const markdown = await this.app.vault.cachedRead(file);
       const title = this.resolveTitle(file, markdown);
 
-      const { buffer, matched, warnings } = await convertToDocx(
+      const { buffer, matched, warnings, charCount, wordCount } = await convertToDocx(
         markdown, title, this.app, file, this.settings,
       );
 
       const outputName = await this.saveDocx(file, title, buffer);
 
       if (!silent) {
-        let msg = `导出成功：${outputName}\n🖼 ${matched} 张图片`;
+        const readMin = Math.max(1, Math.round(charCount / 500));
+        let msg = `导出成功：${outputName}\n🖼 ${matched} 张图片 · 📝 ${charCount} 字 · ⏱ 约 ${readMin} 分钟`;
         if (warnings.length) {
           msg += `\n⚠️ ${warnings.length} 个警告，详见控制台`;
           console.warn("[export-word] warnings:", warnings);

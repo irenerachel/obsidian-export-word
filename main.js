@@ -18810,6 +18810,29 @@ var Tab = class extends EmptyElement {
     super("w:tab");
   }
 };
+var BreakType = {
+  /** Column break - text continues at the beginning of the next column */
+  COLUMN: "column",
+  /** Page break - text continues at the beginning of the next page */
+  PAGE: "page"
+  // textWrapping breaks are the default and already exposed via the "Run" class
+};
+var Break = class extends XmlComponent {
+  constructor(type2) {
+    super("w:br");
+    this.root.push(
+      new Attributes({
+        type: type2
+      })
+    );
+  }
+};
+var PageBreak = class extends Run {
+  constructor() {
+    super({});
+    this.root.push(new Break(BreakType.PAGE));
+  }
+};
 var PageBreakBefore = class extends XmlComponent {
   constructor() {
     super("w:pageBreakBefore");
@@ -23072,6 +23095,18 @@ var StyleLevel = class {
     this.level = level;
   }
 };
+var Header2 = class {
+  constructor(options = { children: [] }) {
+    __publicField(this, "options");
+    this.options = options;
+  }
+};
+var Footer2 = class {
+  constructor(options = { children: [] }) {
+    __publicField(this, "options");
+    this.options = options;
+  }
+};
 var streamBrowserifyExports = requireStreamBrowserify();
 function commonjsRequire(path) {
   throw new Error('Could not dynamically require "' + path + '". Please configure the dynamicRequireTargets or/and ignoreDynamicRequires option of @rollup/plugin-commonjs appropriately for this require call to work.');
@@ -26514,6 +26549,66 @@ async function convertToDocx(markdown, title, app, sourceFile, settings) {
   const doc = parser.parseFromString(`<div id="r">${html}</div>`, "text/html");
   const root = doc.getElementById("r");
   const children = await convertBlocks(Array.from(root.childNodes), ctx);
+  const fontSize = settings.fontSize * 2;
+  const font = settings.defaultFont;
+  const cjkFont = settings.enableSmartFont ? settings.cjkFont : font;
+  const sections = [];
+  const pageProps = {
+    page: {
+      size: { width: 12240, height: 15840 },
+      margin: { top: 1440, right: 1440, bottom: 1440, left: 1440 }
+    }
+  };
+  const headerChildren = [];
+  if (settings.headerText) {
+    const headerStr = settings.headerText.replace(/\{title\}/g, title);
+    headerChildren.push(new Paragraph({
+      alignment: AlignmentType.CENTER,
+      children: [new TextRun({ text: headerStr, size: 18, color: "999999", font })]
+    }));
+  }
+  const footerChildren = [];
+  if (settings.enablePageNumbers) {
+    footerChildren.push(new Paragraph({
+      alignment: AlignmentType.CENTER,
+      children: [
+        new TextRun({ children: [PageNumber.CURRENT], size: 18, color: "999999", font }),
+        new TextRun({ text: " / ", size: 18, color: "999999", font }),
+        new TextRun({ children: [PageNumber.TOTAL_PAGES], size: 18, color: "999999", font })
+      ]
+    }));
+  }
+  const sectionHeaderFooter = {};
+  if (headerChildren.length) sectionHeaderFooter.headers = { default: new Header2({ children: headerChildren }) };
+  if (footerChildren.length) sectionHeaderFooter.footers = { default: new Footer2({ children: footerChildren }) };
+  if (settings.enableCoverPage) {
+    const now = /* @__PURE__ */ new Date();
+    const dateStr = `${now.getFullYear()} \u5E74 ${now.getMonth() + 1} \u6708 ${now.getDate()} \u65E5`;
+    const coverChildren = [
+      new Paragraph({ spacing: { before: 4e3 } }),
+      new Paragraph({
+        alignment: AlignmentType.CENTER,
+        spacing: { after: 400 },
+        children: [new TextRun({ text: title, bold: true, size: fontSize + 28, font: cjkFont })]
+      })
+    ];
+    if (settings.coverAuthor) {
+      coverChildren.push(new Paragraph({
+        alignment: AlignmentType.CENTER,
+        spacing: { after: 200 },
+        children: [new TextRun({ text: settings.coverAuthor, size: fontSize + 4, color: "666666", font: cjkFont })]
+      }));
+    }
+    coverChildren.push(new Paragraph({
+      alignment: AlignmentType.CENTER,
+      spacing: { after: 200 },
+      children: [new TextRun({ text: dateStr, size: fontSize, color: "999999", font })]
+    }));
+    sections.push({
+      properties: { ...pageProps, ...sectionHeaderFooter },
+      children: coverChildren
+    });
+  }
   const docChildren = [];
   if (settings.enableToc && ctx.headings.length > 0) {
     docChildren.push(
@@ -26533,7 +26628,10 @@ async function convertToDocx(markdown, title, app, sourceFile, settings) {
     docChildren.push(new Paragraph({ spacing: { after: 300 } }));
   }
   docChildren.push(...children);
-  const fontSize = settings.fontSize * 2;
+  sections.push({
+    properties: { ...pageProps, ...sectionHeaderFooter },
+    children: docChildren
+  });
   const wordDoc = new File({
     creator: "Export to Word",
     title,
@@ -26541,29 +26639,24 @@ async function convertToDocx(markdown, title, app, sourceFile, settings) {
     styles: {
       default: {
         document: {
-          run: { font: settings.defaultFont, size: fontSize },
+          run: { font, size: fontSize },
           paragraph: { spacing: { after: 200 } }
         },
-        heading1: { run: { font: settings.defaultFont, size: fontSize + 16, bold: true } },
-        heading2: { run: { font: settings.defaultFont, size: fontSize + 12, bold: true } },
-        heading3: { run: { font: settings.defaultFont, size: fontSize + 8, bold: true } },
-        heading4: { run: { font: settings.defaultFont, size: fontSize + 4, bold: true } }
+        heading1: { run: { font: cjkFont, size: fontSize + 16, bold: true } },
+        heading2: { run: { font: cjkFont, size: fontSize + 12, bold: true } },
+        heading3: { run: { font: cjkFont, size: fontSize + 8, bold: true } },
+        heading4: { run: { font: cjkFont, size: fontSize + 4, bold: true } }
       }
     },
     features: { updateFields: true },
-    sections: [{
-      properties: {
-        page: {
-          size: { width: 12240, height: 15840 },
-          margin: { top: 1440, right: 1440, bottom: 1440, left: 1440 }
-        }
-      },
-      children: docChildren
-    }]
+    sections
   });
   const blob = await Packer.toBlob(wordDoc);
   const buffer2 = await blob.arrayBuffer();
-  return { buffer: buffer2, matched: ctx.matched, warnings: ctx.warnings };
+  const plainText = markdown.replace(/^---[\s\S]*?---\n*/, "").replace(/[#*_~`>\[\]!|]/g, "");
+  const charCount = plainText.replace(/\s/g, "").length;
+  const wordCount = plainText.trim().split(/\s+/).filter(Boolean).length;
+  return { buffer: buffer2, matched: ctx.matched, warnings: ctx.warnings, charCount, wordCount };
 }
 async function normalizeObsidianMarkdown(text2, ctx) {
   let out = text2;
@@ -26662,10 +26755,14 @@ async function convertBlocks(nodes, ctx) {
       const level = `HEADING_${levelNum}`;
       const text2 = el.textContent || "";
       ctx.headings.push({ level: levelNum, text: text2 });
+      const headingInlines = await inlines(el.childNodes, ctx);
+      if (levelNum === 1 && ctx.settings.enableH1PageBreak && blocks.length > 0) {
+        headingInlines.unshift(new TextRun({ children: [new PageBreak()] }));
+      }
       blocks.push(new Paragraph({
         heading: HeadingLevel[level],
         spacing: { after: 220 },
-        children: await inlines(el.childNodes, ctx)
+        children: headingInlines
       }));
     } else if (tag === "P") {
       blocks.push(new Paragraph({
@@ -26949,8 +27046,17 @@ var DEFAULT_SETTINGS = {
   customTitleFormat: "{filename}",
   enableToc: false,
   enableCallouts: true,
+  enableCoverPage: false,
+  coverAuthor: "",
+  enablePageNumbers: true,
+  headerText: "",
+  enableH1PageBreak: false,
+  enableSmartFont: true,
   defaultFont: "Calibri",
-  fontSize: 12
+  cjkFont: "PingFang SC",
+  fontSize: 12,
+  enableWatermark: false,
+  watermarkText: ""
 };
 var ExportWordSettingTab = class extends import_obsidian2.PluginSettingTab {
   constructor(app, plugin) {
@@ -27036,6 +27142,40 @@ var ExportWordSettingTab = class extends import_obsidian2.PluginSettingTab {
         })
       );
     }
+    containerEl.createEl("h3", { text: "\u9875\u9762\u5E03\u5C40" });
+    new import_obsidian2.Setting(containerEl).setName("\u5C01\u9762\u9875").setDesc("\u5728\u6587\u6863\u5F00\u5934\u751F\u6210\u5E26\u6807\u9898\u3001\u4F5C\u8005\u3001\u65E5\u671F\u7684\u5C01\u9762\u9875").addToggle(
+      (t) => t.setValue(this.plugin.settings.enableCoverPage).onChange(async (v) => {
+        this.plugin.settings.enableCoverPage = v;
+        await this.plugin.saveSettings();
+        this.display();
+      })
+    );
+    if (this.plugin.settings.enableCoverPage) {
+      new import_obsidian2.Setting(containerEl).setName("\u5C01\u9762\u4F5C\u8005\u540D").setDesc("\u7559\u7A7A\u5219\u4E0D\u663E\u793A\u4F5C\u8005").addText(
+        (t) => t.setPlaceholder("\u963F\u771FIrene").setValue(this.plugin.settings.coverAuthor).onChange(async (v) => {
+          this.plugin.settings.coverAuthor = v;
+          await this.plugin.saveSettings();
+        })
+      );
+    }
+    new import_obsidian2.Setting(containerEl).setName("\u9875\u7801").setDesc("\u5728\u9875\u811A\u663E\u793A\u9875\u7801").addToggle(
+      (t) => t.setValue(this.plugin.settings.enablePageNumbers).onChange(async (v) => {
+        this.plugin.settings.enablePageNumbers = v;
+        await this.plugin.saveSettings();
+      })
+    );
+    new import_obsidian2.Setting(containerEl).setName("\u9875\u7709\u6587\u5B57").setDesc("\u7559\u7A7A\u5219\u4E0D\u663E\u793A\u9875\u7709\u3002\u652F\u6301 {title} \u53D8\u91CF").addText(
+      (t) => t.setPlaceholder("").setValue(this.plugin.settings.headerText).onChange(async (v) => {
+        this.plugin.settings.headerText = v;
+        await this.plugin.saveSettings();
+      })
+    );
+    new import_obsidian2.Setting(containerEl).setName("H1 \u524D\u81EA\u52A8\u5206\u9875").setDesc("\u6BCF\u4E2A\u4E00\u7EA7\u6807\u9898\u524D\u63D2\u5165\u5206\u9875\u7B26\uFF0C\u9002\u5408\u591A\u7AE0\u8282\u957F\u6587").addToggle(
+      (t) => t.setValue(this.plugin.settings.enableH1PageBreak).onChange(async (v) => {
+        this.plugin.settings.enableH1PageBreak = v;
+        await this.plugin.saveSettings();
+      })
+    );
     containerEl.createEl("h3", { text: "\u9AD8\u7EA7\u529F\u80FD" });
     new import_obsidian2.Setting(containerEl).setName("\u81EA\u52A8\u751F\u6210\u76EE\u5F55").setDesc("\u5728\u6587\u6863\u5F00\u5934\u63D2\u5165\u76EE\u5F55\uFF08Table of Contents\uFF09").addToggle(
       (t) => t.setValue(this.plugin.settings.enableToc).onChange(async (v) => {
@@ -27049,13 +27189,43 @@ var ExportWordSettingTab = class extends import_obsidian2.PluginSettingTab {
         await this.plugin.saveSettings();
       })
     );
+    new import_obsidian2.Setting(containerEl).setName("\u6C34\u5370").setDesc("\u5728\u6587\u6863\u4E2D\u6DFB\u52A0\u6587\u5B57\u6C34\u5370").addToggle(
+      (t) => t.setValue(this.plugin.settings.enableWatermark).onChange(async (v) => {
+        this.plugin.settings.enableWatermark = v;
+        await this.plugin.saveSettings();
+        this.display();
+      })
+    );
+    if (this.plugin.settings.enableWatermark) {
+      new import_obsidian2.Setting(containerEl).setName("\u6C34\u5370\u6587\u5B57").addText(
+        (t) => t.setPlaceholder("CONFIDENTIAL").setValue(this.plugin.settings.watermarkText).onChange(async (v) => {
+          this.plugin.settings.watermarkText = v;
+          await this.plugin.saveSettings();
+        })
+      );
+    }
     containerEl.createEl("h3", { text: "Word \u6837\u5F0F" });
-    new import_obsidian2.Setting(containerEl).setName("\u9ED8\u8BA4\u5B57\u4F53").setDesc("Word \u6587\u6863\u7684\u6B63\u6587\u5B57\u4F53").addText(
+    new import_obsidian2.Setting(containerEl).setName("\u4E2D\u82F1\u6587\u667A\u80FD\u5B57\u4F53").setDesc("\u81EA\u52A8\u4E3A\u4E2D\u6587\u548C\u82F1\u6587\u5206\u522B\u5E94\u7528\u4E0D\u540C\u5B57\u4F53").addToggle(
+      (t) => t.setValue(this.plugin.settings.enableSmartFont).onChange(async (v) => {
+        this.plugin.settings.enableSmartFont = v;
+        await this.plugin.saveSettings();
+        this.display();
+      })
+    );
+    new import_obsidian2.Setting(containerEl).setName("\u82F1\u6587/\u9ED8\u8BA4\u5B57\u4F53").addText(
       (t) => t.setValue(this.plugin.settings.defaultFont).onChange(async (v) => {
         this.plugin.settings.defaultFont = v.trim() || "Calibri";
         await this.plugin.saveSettings();
       })
     );
+    if (this.plugin.settings.enableSmartFont) {
+      new import_obsidian2.Setting(containerEl).setName("\u4E2D\u6587\u5B57\u4F53").setDesc("\u7528\u4E8E\u4E2D\u65E5\u97E9\u6587\u5B57").addText(
+        (t) => t.setValue(this.plugin.settings.cjkFont).onChange(async (v) => {
+          this.plugin.settings.cjkFont = v.trim() || "PingFang SC";
+          await this.plugin.saveSettings();
+        })
+      );
+    }
     new import_obsidian2.Setting(containerEl).setName("\u6B63\u6587\u5B57\u53F7").setDesc("Word \u6587\u6863\u7684\u6B63\u6587\u5B57\u53F7\uFF08pt\uFF09").addText(
       (t) => t.setValue(String(this.plugin.settings.fontSize)).onChange(async (v) => {
         const n = parseInt(v, 10);
@@ -27147,7 +27317,7 @@ var ExportWordPlugin = class extends import_obsidian3.Plugin {
     try {
       const markdown = await this.app.vault.cachedRead(file);
       const title = this.resolveTitle(file, markdown);
-      const { buffer: buffer2, matched, warnings } = await convertToDocx(
+      const { buffer: buffer2, matched, warnings, charCount, wordCount } = await convertToDocx(
         markdown,
         title,
         this.app,
@@ -27156,8 +27326,9 @@ var ExportWordPlugin = class extends import_obsidian3.Plugin {
       );
       const outputName = await this.saveDocx(file, title, buffer2);
       if (!silent) {
+        const readMin = Math.max(1, Math.round(charCount / 500));
         let msg = `\u5BFC\u51FA\u6210\u529F\uFF1A${outputName}
-\u{1F5BC} ${matched} \u5F20\u56FE\u7247`;
+\u{1F5BC} ${matched} \u5F20\u56FE\u7247 \xB7 \u{1F4DD} ${charCount} \u5B57 \xB7 \u23F1 \u7EA6 ${readMin} \u5206\u949F`;
         if (warnings.length) {
           msg += `
 \u26A0\uFE0F ${warnings.length} \u4E2A\u8B66\u544A\uFF0C\u8BE6\u89C1\u63A7\u5236\u53F0`;

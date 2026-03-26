@@ -4,7 +4,9 @@ import markdownItFootnote from "markdown-it-footnote";
 import {
   BorderStyle, Document, ExternalHyperlink, HeadingLevel, ImageRun,
   Packer, Paragraph, Table, TableCell, TableRow, TextRun, WidthType,
-  TableOfContents, StyleLevel, AlignmentType,
+  TableOfContents, StyleLevel, AlignmentType, PageBreak,
+  Header, Footer, PageNumber, TextWrappingType, TextWrappingSide,
+  ISectionOptions,
 } from "docx";
 import { getImageDimensions, guessImageType, guessImageTypeFromUrl } from "./image-utils";
 import type { ExportWordSettings } from "./settings";
@@ -56,8 +58,81 @@ export async function convertToDocx(
   const root = doc.getElementById("r")!;
   const children = await convertBlocks(Array.from(root.childNodes), ctx);
 
-  // Optional Table of Contents
+  const fontSize = settings.fontSize * 2; // docx uses half-points
+  const font = settings.defaultFont;
+  const cjkFont = settings.enableSmartFont ? settings.cjkFont : font;
+
+  // Build sections
+  const sections: ISectionOptions[] = [];
+  const pageProps = {
+    page: {
+      size: { width: 12240, height: 15840 },
+      margin: { top: 1440, right: 1440, bottom: 1440, left: 1440 },
+    },
+  };
+
+  // Header
+  const headerChildren: Paragraph[] = [];
+  if (settings.headerText) {
+    const headerStr = settings.headerText.replace(/\{title\}/g, title);
+    headerChildren.push(new Paragraph({
+      alignment: AlignmentType.CENTER,
+      children: [new TextRun({ text: headerStr, size: 18, color: "999999", font })],
+    }));
+  }
+
+  // Footer with page numbers
+  const footerChildren: Paragraph[] = [];
+  if (settings.enablePageNumbers) {
+    footerChildren.push(new Paragraph({
+      alignment: AlignmentType.CENTER,
+      children: [
+        new TextRun({ children: [PageNumber.CURRENT], size: 18, color: "999999", font }),
+        new TextRun({ text: " / ", size: 18, color: "999999", font }),
+        new TextRun({ children: [PageNumber.TOTAL_PAGES], size: 18, color: "999999", font }),
+      ],
+    }));
+  }
+
+  const sectionHeaderFooter: any = {};
+  if (headerChildren.length) sectionHeaderFooter.headers = { default: new Header({ children: headerChildren }) };
+  if (footerChildren.length) sectionHeaderFooter.footers = { default: new Footer({ children: footerChildren }) };
+
+  // Cover page section
+  if (settings.enableCoverPage) {
+    const now = new Date();
+    const dateStr = `${now.getFullYear()} 年 ${now.getMonth() + 1} 月 ${now.getDate()} 日`;
+    const coverChildren: Paragraph[] = [
+      new Paragraph({ spacing: { before: 4000 } }),
+      new Paragraph({
+        alignment: AlignmentType.CENTER,
+        spacing: { after: 400 },
+        children: [new TextRun({ text: title, bold: true, size: fontSize + 28, font: cjkFont })],
+      }),
+    ];
+    if (settings.coverAuthor) {
+      coverChildren.push(new Paragraph({
+        alignment: AlignmentType.CENTER,
+        spacing: { after: 200 },
+        children: [new TextRun({ text: settings.coverAuthor, size: fontSize + 4, color: "666666", font: cjkFont })],
+      }));
+    }
+    coverChildren.push(new Paragraph({
+      alignment: AlignmentType.CENTER,
+      spacing: { after: 200 },
+      children: [new TextRun({ text: dateStr, size: fontSize, color: "999999", font })],
+    }));
+
+    sections.push({
+      properties: { ...pageProps, ...sectionHeaderFooter },
+      children: coverChildren,
+    });
+  }
+
+  // Main content section
   const docChildren: (Paragraph | Table | TableOfContents)[] = [];
+
+  // Optional TOC
   if (settings.enableToc && ctx.headings.length > 0) {
     docChildren.push(
       new TableOfContents("目录", {
@@ -73,7 +148,10 @@ export async function convertToDocx(
   }
   docChildren.push(...children);
 
-  const fontSize = settings.fontSize * 2; // docx uses half-points
+  sections.push({
+    properties: { ...pageProps, ...sectionHeaderFooter },
+    children: docChildren,
+  });
 
   const wordDoc = new Document({
     creator: "Export to Word",
@@ -82,30 +160,28 @@ export async function convertToDocx(
     styles: {
       default: {
         document: {
-          run: { font: settings.defaultFont, size: fontSize },
+          run: { font, size: fontSize },
           paragraph: { spacing: { after: 200 } },
         },
-        heading1: { run: { font: settings.defaultFont, size: fontSize + 16, bold: true } },
-        heading2: { run: { font: settings.defaultFont, size: fontSize + 12, bold: true } },
-        heading3: { run: { font: settings.defaultFont, size: fontSize + 8, bold: true } },
-        heading4: { run: { font: settings.defaultFont, size: fontSize + 4, bold: true } },
+        heading1: { run: { font: cjkFont, size: fontSize + 16, bold: true } },
+        heading2: { run: { font: cjkFont, size: fontSize + 12, bold: true } },
+        heading3: { run: { font: cjkFont, size: fontSize + 8, bold: true } },
+        heading4: { run: { font: cjkFont, size: fontSize + 4, bold: true } },
       },
     },
     features: { updateFields: true },
-    sections: [{
-      properties: {
-        page: {
-          size: { width: 12240, height: 15840 },
-          margin: { top: 1440, right: 1440, bottom: 1440, left: 1440 },
-        },
-      },
-      children: docChildren,
-    }],
+    sections,
   });
 
   const blob = await Packer.toBlob(wordDoc);
   const buffer = await blob.arrayBuffer();
-  return { buffer, matched: ctx.matched, warnings: ctx.warnings };
+
+  // Word/character count
+  const plainText = markdown.replace(/^---[\s\S]*?---\n*/, "").replace(/[#*_~`>\[\]!|]/g, "");
+  const charCount = plainText.replace(/\s/g, "").length;
+  const wordCount = plainText.trim().split(/\s+/).filter(Boolean).length;
+
+  return { buffer, matched: ctx.matched, warnings: ctx.warnings, charCount, wordCount };
 }
 
 /* ── Markdown normalization ── */
@@ -235,10 +311,15 @@ async function convertBlocks(nodes: ChildNode[], ctx: ConvertContext): Promise<(
       const level = `HEADING_${levelNum}` as keyof typeof HeadingLevel;
       const text = el.textContent || "";
       ctx.headings.push({ level: levelNum, text });
+      const headingInlines = await inlines(el.childNodes, ctx);
+      // H1 page break: insert page break before H1 (except the first one)
+      if (levelNum === 1 && ctx.settings.enableH1PageBreak && blocks.length > 0) {
+        headingInlines.unshift(new TextRun({ children: [new PageBreak()] }));
+      }
       blocks.push(new Paragraph({
         heading: HeadingLevel[level],
         spacing: { after: 220 },
-        children: await inlines(el.childNodes, ctx),
+        children: headingInlines,
       }));
     } else if (tag === "P") {
       blocks.push(new Paragraph({
