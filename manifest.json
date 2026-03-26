@@ -4,6 +4,7 @@
   "version": "1.0.0",
   "minAppVersion": "1.5.0",
   "description": "Export the current note to a Word (.docx) document with embedded images. No Pandoc required.",
-  "author": "Irene",
+  "author": "阿真Irene",
+  "authorUrl": "https://github.com/irenerachel",
   "isDesktopOnly": true
 }
